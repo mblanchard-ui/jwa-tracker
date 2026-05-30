@@ -2,6 +2,14 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 
+const TRAINING_TYPES = [
+  'Private Pilot',
+  'Instrument',
+  'Commercial',
+  'CFI',
+  'Multi Engine',
+]
+
 const STAGES = [
   'Presolo',
   'Pre-towered solo',
@@ -19,12 +27,29 @@ const AV_COLORS = [
   { bg: '#fee2e2', color: '#991b1b' },
 ]
 
+const TRAINING_COLORS = {
+  'Private Pilot': { bg: '#dbeafe', color: '#1e40af' },
+  'Instrument':    { bg: '#ede9fe', color: '#4c1d95' },
+  'Commercial':    { bg: '#d1fae5', color: '#065f46' },
+  'CFI':           { bg: '#fef3c7', color: '#92400e' },
+  'Multi Engine':  { bg: '#fee2e2', color: '#991b1b' },
+}
+
 function initials(name) {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
 }
 
 function StageBadge({ stage }) {
   return <span className={`badge badge-${stage}`}>{STAGES[stage]}</span>
+}
+
+function TrainingBadge({ type }) {
+  const c = TRAINING_COLORS[type] || TRAINING_COLORS['Private Pilot']
+  return (
+    <span style={{ display:'inline-block', padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:600, background:c.bg, color:c.color, whiteSpace:'nowrap' }}>
+      {type || 'Private Pilot'}
+    </span>
+  )
 }
 
 export default function Home() {
@@ -39,6 +64,7 @@ export default function Home() {
   const [addCFIOpen, setAddCFIOpen] = useState(false)
   const [editStudent, setEditStudent] = useState(null)
   const [stageFilter, setStageFilter] = useState(null)
+  const [trainingFilter, setTrainingFilter] = useState(null)
   const [searchQ, setSearchQ] = useState('')
 
   useEffect(() => {
@@ -89,6 +115,7 @@ export default function Home() {
 
   const filteredStudents = students.filter(s => {
     if (stageFilter !== null && s.stage !== stageFilter) return false
+    if (trainingFilter !== null && s.training_type !== trainingFilter) return false
     if (searchQ && !s.full_name.toLowerCase().includes(searchQ.toLowerCase())) return false
     return true
   })
@@ -123,6 +150,8 @@ export default function Home() {
             profile={profile}
             stageFilter={stageFilter}
             setStageFilter={setStageFilter}
+            trainingFilter={trainingFilter}
+            setTrainingFilter={setTrainingFilter}
             searchQ={searchQ}
             setSearchQ={setSearchQ}
             onAdd={() => setAddStudentOpen(true)}
@@ -182,6 +211,20 @@ function DashboardTab({ cfis, students }) {
         <div className="stat-card"><div className="stat-num">{ready}</div><div className="stat-lbl">Checkride ready</div></div>
         <div className="stat-card"><div className="stat-num">{prep}</div><div className="stat-lbl">In checkride prep</div></div>
       </div>
+
+      <div className="section-title" style={{ marginBottom: 12 }}>By training type</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 24 }}>
+        {TRAINING_TYPES.map(t => {
+          const count = students.filter(s => (s.training_type || 'Private Pilot') === t).length
+          const c = TRAINING_COLORS[t]
+          return (
+            <div key={t} style={{ background: c.bg, color: c.color, borderRadius: 8, padding: '8px 14px', fontSize: 13 }}>
+              <span style={{ fontWeight: 600 }}>{count}</span> {t}
+            </div>
+          )
+        })}
+      </div>
+
       <div className="section-title" style={{ marginBottom: 12 }}>Stage breakdown</div>
       {STAGES.map((s, i) => {
         const count = students.filter(x => x.stage === i).length
@@ -196,15 +239,19 @@ function DashboardTab({ cfis, students }) {
           </div>
         )
       })}
+
       {ready > 0 && (
         <>
           <div className="section-title" style={{ margin: '24px 0 12px' }}>Checkride-ready students</div>
           {students.filter(s => s.stage === 5).map((s, i) => (
             <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <div className="avatar" style={AV_COLORS[i % 5]}>{initials(s.full_name)}</div>
-              <div>
+              <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 500, fontSize: 14 }}>{s.full_name}</div>
-                <StageBadge stage={5} />
+                <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                  <TrainingBadge type={s.training_type || 'Private Pilot'} />
+                  <StageBadge stage={5} />
+                </div>
               </div>
             </div>
           ))}
@@ -244,7 +291,10 @@ function CFIsTab({ cfis, students, onAddCFI, onEditStudent }) {
                   <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid #f0f0ea', cursor: 'pointer' }} onClick={() => onEditStudent(s)}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 500 }}>{s.full_name}</div>
-                      {s.notes && <div style={{ fontSize: 11, color: '#6b6b66', fontStyle: 'italic' }}>{s.notes}</div>}
+                      <div style={{ display: 'flex', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
+                        <TrainingBadge type={s.training_type || 'Private Pilot'} />
+                      </div>
+                      {s.notes && <div style={{ fontSize: 11, color: '#6b6b66', fontStyle: 'italic', marginTop: 2 }}>{s.notes}</div>}
                     </div>
                     <StageBadge stage={s.stage} />
                   </div>
@@ -258,7 +308,7 @@ function CFIsTab({ cfis, students, onAddCFI, onEditStudent }) {
   )
 }
 
-function StudentsTab({ students, allStudents, cfis, isChief, profile, stageFilter, setStageFilter, searchQ, setSearchQ, onAdd, onEdit }) {
+function StudentsTab({ students, allStudents, cfis, isChief, profile, stageFilter, setStageFilter, trainingFilter, setTrainingFilter, searchQ, setSearchQ, onAdd, onEdit }) {
   return (
     <div>
       <div className="section-header">
@@ -266,10 +316,18 @@ function StudentsTab({ students, allStudents, cfis, isChief, profile, stageFilte
         <button className="btn btn-primary btn-sm" onClick={onAdd}>+ Add student</button>
       </div>
       <input className="search-input" placeholder="Search by name..." value={searchQ} onChange={e => setSearchQ(e.target.value)} />
+      <div style={{ fontSize: 12, color: '#6b6b66', marginBottom: 4 }}>Filter by stage</div>
       <div className="filter-row">
         <button className={`filter-pill ${stageFilter === null ? 'active' : ''}`} onClick={() => setStageFilter(null)}>All</button>
         {STAGES.map((s, i) => (
           <button key={i} className={`filter-pill ${stageFilter === i ? 'active' : ''}`} onClick={() => setStageFilter(i)}>{s}</button>
+        ))}
+      </div>
+      <div style={{ fontSize: 12, color: '#6b6b66', marginBottom: 4 }}>Filter by training type</div>
+      <div className="filter-row" style={{ marginBottom: 14 }}>
+        <button className={`filter-pill ${trainingFilter === null ? 'active' : ''}`} onClick={() => setTrainingFilter(null)}>All</button>
+        {TRAINING_TYPES.map(t => (
+          <button key={t} className={`filter-pill ${trainingFilter === t ? 'active' : ''}`} onClick={() => setTrainingFilter(t)}>{t}</button>
         ))}
       </div>
       {students.length === 0 && <div className="empty">No students found.</div>}
@@ -277,16 +335,21 @@ function StudentsTab({ students, allStudents, cfis, isChief, profile, stageFilte
         const cfi = cfis.find(c => c.id === s.cfi_id)
         const updated = s.updated_at ? new Date(s.updated_at).toLocaleDateString() : null
         return (
-          <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={() => onEdit(s)}>
-            <div className="avatar" style={AV_COLORS[allStudents.indexOf(s) % 5]}>{initials(s.full_name)}</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 500, fontSize: 14 }}>{s.full_name}</div>
-              <div style={{ fontSize: 12, color: '#6b6b66' }}>
-                {isChief && cfi ? cfi.full_name + ' · ' : ''}{updated ? 'Updated ' + updated : ''}
+          <div key={s.id} className="card" style={{ cursor: 'pointer' }} onClick={() => onEdit(s)}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div className="avatar" style={AV_COLORS[allStudents.indexOf(s) % 5]}>{initials(s.full_name)}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 500, fontSize: 14 }}>{s.full_name}</div>
+                <div style={{ fontSize: 12, color: '#6b6b66' }}>
+                  {isChief && cfi ? cfi.full_name + ' · ' : ''}{updated ? 'Updated ' + updated : ''}
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                  <TrainingBadge type={s.training_type || 'Private Pilot'} />
+                  <StageBadge stage={s.stage} />
+                </div>
+                {s.notes && <div style={{ fontSize: 11, color: '#6b6b66', fontStyle: 'italic', marginTop: 2 }}>{s.notes}</div>}
               </div>
-              {s.notes && <div style={{ fontSize: 11, color: '#6b6b66', fontStyle: 'italic', marginTop: 2 }}>{s.notes}</div>}
             </div>
-            <StageBadge stage={s.stage} />
           </div>
         )
       })}
@@ -298,6 +361,7 @@ function AddStudentModal({ cfis, profile, isChief, onClose, onSave }) {
   const [name, setName] = useState('')
   const [cfiId, setCfiId] = useState(isChief ? (cfis[0]?.id || '') : profile?.id)
   const [stage, setStage] = useState(0)
+  const [trainingType, setTrainingType] = useState('Private Pilot')
   const [notes, setNotes] = useState('')
 
   return (
@@ -314,6 +378,12 @@ function AddStudentModal({ cfis, profile, isChief, onClose, onSave }) {
           </div>
         )}
         <div className="form-group">
+          <label>Training type</label>
+          <select value={trainingType} onChange={e => setTrainingType(e.target.value)}>
+            {TRAINING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div className="form-group">
           <label>Current stage</label>
           <select value={stage} onChange={e => setStage(parseInt(e.target.value))}>
             {STAGES.map((s, i) => <option key={i} value={i}>{s}</option>)}
@@ -322,7 +392,7 @@ function AddStudentModal({ cfis, profile, isChief, onClose, onSave }) {
         <div className="form-group"><label>Notes (optional)</label><input value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. Working on crosswind landings" /></div>
         <div className="modal-footer">
           <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => name && onSave({ full_name: name, cfi_id: cfiId || profile?.id, stage, notes })}>Save</button>
+          <button className="btn btn-primary" onClick={() => name && onSave({ full_name: name, cfi_id: cfiId || profile?.id, stage, training_type: trainingType, notes })}>Save</button>
         </div>
       </div>
     </div>
@@ -333,6 +403,7 @@ function EditStudentModal({ student, cfis, isChief, onClose, onSave, onDelete })
   const [name, setName] = useState(student.full_name)
   const [cfiId, setCfiId] = useState(student.cfi_id)
   const [stage, setStage] = useState(student.stage)
+  const [trainingType, setTrainingType] = useState(student.training_type || 'Private Pilot')
   const [notes, setNotes] = useState(student.notes || '')
 
   return (
@@ -349,6 +420,12 @@ function EditStudentModal({ student, cfis, isChief, onClose, onSave, onDelete })
           </div>
         )}
         <div className="form-group">
+          <label>Training type</label>
+          <select value={trainingType} onChange={e => setTrainingType(e.target.value)}>
+            {TRAINING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div className="form-group">
           <label>Stage</label>
           <select value={stage} onChange={e => setStage(parseInt(e.target.value))}>
             {STAGES.map((s, i) => <option key={i} value={i}>{s}</option>)}
@@ -358,7 +435,7 @@ function EditStudentModal({ student, cfis, isChief, onClose, onSave, onDelete })
         <div className="modal-footer">
           <button className="btn btn-danger btn-sm" onClick={() => confirm('Delete this student?') && onDelete(student.id)}>Delete</button>
           <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => onSave(student.id, { full_name: name, cfi_id: cfiId, stage, notes })}>Save</button>
+          <button className="btn btn-primary" onClick={() => onSave(student.id, { full_name: name, cfi_id: cfiId, stage, training_type: trainingType, notes })}>Save</button>
         </div>
       </div>
     </div>
