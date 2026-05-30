@@ -198,4 +198,188 @@ function DashboardTab({ cfis, students }) {
       })}
       {ready > 0 && (
         <>
-          <div className="section-title" style={{ margin: '24px 0 12px'
+          <div className="section-title" style={{ margin: '24px 0 12px' }}>Checkride-ready students</div>
+          {students.filter(s => s.stage === 5).map((s, i) => (
+            <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div className="avatar" style={AV_COLORS[i % 5]}>{initials(s.full_name)}</div>
+              <div>
+                <div style={{ fontWeight: 500, fontSize: 14 }}>{s.full_name}</div>
+                <StageBadge stage={5} />
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
+
+function CFIsTab({ cfis, students, onAddCFI, onEditStudent }) {
+  const [expanded, setExpanded] = useState(null)
+
+  return (
+    <div>
+      <div className="section-header">
+        <span className="section-title">Instructors ({cfis.length})</span>
+        <button className="btn btn-sm" onClick={onAddCFI}>+ Add CFI</button>
+      </div>
+      {cfis.length === 0 && <div className="empty">No instructors yet.</div>}
+      {cfis.map((cfi, ci) => {
+        const myStudents = students.filter(s => s.cfi_id === cfi.id)
+        const isOpen = expanded === cfi.id
+        return (
+          <div key={cfi.id} className="card" style={{ marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={() => setExpanded(isOpen ? null : cfi.id)}>
+              <div className="avatar" style={AV_COLORS[ci % 5]}>{initials(cfi.full_name)}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 500, fontSize: 14 }}>{cfi.full_name}</div>
+                <div style={{ fontSize: 12, color: '#6b6b66' }}>{myStudents.length} student{myStudents.length !== 1 ? 's' : ''}{cfi.cert_number ? ' · ' + cfi.cert_number : ''}</div>
+              </div>
+              <span style={{ fontSize: 18, color: '#6b6b66' }}>{isOpen ? '▲' : '▼'}</span>
+            </div>
+            {isOpen && (
+              <div style={{ marginTop: 12, borderTop: '1px solid #e2e1da', paddingTop: 12 }}>
+                {myStudents.length === 0 && <div style={{ fontSize: 13, color: '#6b6b66' }}>No students assigned.</div>}
+                {myStudents.map(s => (
+                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid #f0f0ea', cursor: 'pointer' }} onClick={() => onEditStudent(s)}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>{s.full_name}</div>
+                      {s.notes && <div style={{ fontSize: 11, color: '#6b6b66', fontStyle: 'italic' }}>{s.notes}</div>}
+                    </div>
+                    <StageBadge stage={s.stage} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function StudentsTab({ students, allStudents, cfis, isChief, profile, stageFilter, setStageFilter, searchQ, setSearchQ, onAdd, onEdit }) {
+  return (
+    <div>
+      <div className="section-header">
+        <span className="section-title">{isChief ? 'All students' : 'My students'} ({students.length})</span>
+        <button className="btn btn-primary btn-sm" onClick={onAdd}>+ Add student</button>
+      </div>
+      <input className="search-input" placeholder="Search by name..." value={searchQ} onChange={e => setSearchQ(e.target.value)} />
+      <div className="filter-row">
+        <button className={`filter-pill ${stageFilter === null ? 'active' : ''}`} onClick={() => setStageFilter(null)}>All</button>
+        {STAGES.map((s, i) => (
+          <button key={i} className={`filter-pill ${stageFilter === i ? 'active' : ''}`} onClick={() => setStageFilter(i)}>{s}</button>
+        ))}
+      </div>
+      {students.length === 0 && <div className="empty">No students found.</div>}
+      {students.map((s, i) => {
+        const cfi = cfis.find(c => c.id === s.cfi_id)
+        const updated = s.updated_at ? new Date(s.updated_at).toLocaleDateString() : null
+        return (
+          <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={() => onEdit(s)}>
+            <div className="avatar" style={AV_COLORS[allStudents.indexOf(s) % 5]}>{initials(s.full_name)}</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 500, fontSize: 14 }}>{s.full_name}</div>
+              <div style={{ fontSize: 12, color: '#6b6b66' }}>
+                {isChief && cfi ? cfi.full_name + ' · ' : ''}{updated ? 'Updated ' + updated : ''}
+              </div>
+              {s.notes && <div style={{ fontSize: 11, color: '#6b6b66', fontStyle: 'italic', marginTop: 2 }}>{s.notes}</div>}
+            </div>
+            <StageBadge stage={s.stage} />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function AddStudentModal({ cfis, profile, isChief, onClose, onSave }) {
+  const [name, setName] = useState('')
+  const [cfiId, setCfiId] = useState(isChief ? (cfis[0]?.id || '') : profile?.id)
+  const [stage, setStage] = useState(0)
+  const [notes, setNotes] = useState('')
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <h3>Add student</h3>
+        <div className="form-group"><label>Full name</label><input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Marcus Williams" /></div>
+        {isChief && (
+          <div className="form-group">
+            <label>Assigned CFI</label>
+            <select value={cfiId} onChange={e => setCfiId(e.target.value)}>
+              {cfis.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+            </select>
+          </div>
+        )}
+        <div className="form-group">
+          <label>Current stage</label>
+          <select value={stage} onChange={e => setStage(parseInt(e.target.value))}>
+            {STAGES.map((s, i) => <option key={i} value={i}>{s}</option>)}
+          </select>
+        </div>
+        <div className="form-group"><label>Notes (optional)</label><input value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. Working on crosswind landings" /></div>
+        <div className="modal-footer">
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={() => name && onSave({ full_name: name, cfi_id: cfiId || profile?.id, stage, notes })}>Save</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EditStudentModal({ student, cfis, isChief, onClose, onSave, onDelete }) {
+  const [name, setName] = useState(student.full_name)
+  const [cfiId, setCfiId] = useState(student.cfi_id)
+  const [stage, setStage] = useState(student.stage)
+  const [notes, setNotes] = useState(student.notes || '')
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <h3>Edit student</h3>
+        <div className="form-group"><label>Full name</label><input value={name} onChange={e => setName(e.target.value)} /></div>
+        {isChief && (
+          <div className="form-group">
+            <label>Assigned CFI</label>
+            <select value={cfiId} onChange={e => setCfiId(e.target.value)}>
+              {cfis.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+            </select>
+          </div>
+        )}
+        <div className="form-group">
+          <label>Stage</label>
+          <select value={stage} onChange={e => setStage(parseInt(e.target.value))}>
+            {STAGES.map((s, i) => <option key={i} value={i}>{s}</option>)}
+          </select>
+        </div>
+        <div className="form-group"><label>Notes</label><input value={notes} onChange={e => setNotes(e.target.value)} /></div>
+        <div className="modal-footer">
+          <button className="btn btn-danger btn-sm" onClick={() => confirm('Delete this student?') && onDelete(student.id)}>Delete</button>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={() => onSave(student.id, { full_name: name, cfi_id: cfiId, stage, notes })}>Save</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AddCFIModal({ onClose }) {
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <h3>Adding CFI accounts</h3>
+        <p style={{ fontSize: 14, color: '#6b6b66', lineHeight: 1.6, marginBottom: 16 }}>
+          To add a new CFI, go to your <strong>Supabase dashboard</strong> → Authentication → Users → Add user. Enter their email and password, then run this in the SQL editor:
+        </p>
+        <code style={{ display: 'block', background: '#f4f4f0', padding: 12, borderRadius: 8, fontSize: 12, marginBottom: 16 }}>
+          {`INSERT INTO profiles (id, full_name, role)\nSELECT id, 'CFI Name', 'cfi'\nFROM auth.users\nWHERE email = 'cfi@email.com';`}
+        </code>
+        <div className="modal-footer">
+          <button className="btn btn-primary" onClick={onClose}>Got it</button>
+        </div>
+      </div>
+    </div>
+  )
+}
