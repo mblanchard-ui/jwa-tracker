@@ -69,8 +69,11 @@ export default function Home() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) { router.push('/login'); return }
-      setSession(session)
+      if (!session) {
+        router.push('/login')
+      } else {
+        setSession(session)
+      }
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session) router.push('/login')
@@ -86,16 +89,20 @@ export default function Home() {
 
   async function loadData() {
     setLoading(true)
-    const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
-    setProfile(prof)
-    if (prof?.role === 'chief') {
-      const { data: allCFIs } = await supabase.from('profiles').select('*').eq('role', 'cfi').order('full_name')
-      setCfis(allCFIs || [])
-      const { data: allStudents } = await supabase.from('students').select('*').order('full_name')
-      setStudents(allStudents || [])
-    } else {
-      const { data: myStudents } = await supabase.from('students').select('*').eq('cfi_id', session.user.id).order('full_name')
-      setStudents(myStudents || [])
+    try {
+      const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
+      setProfile(prof)
+      if (prof?.role === 'chief') {
+        const { data: allCFIs } = await supabase.from('profiles').select('*').eq('role', 'cfi').order('full_name')
+        setCfis(allCFIs || [])
+        const { data: allStudents } = await supabase.from('students').select('*').order('full_name')
+        setStudents(allStudents || [])
+      } else {
+        const { data: myStudents } = await supabase.from('students').select('*').eq('cfi_id', session.user.id).order('full_name')
+        setStudents(myStudents || [])
+      }
+    } catch(e) {
+      console.error('loadData error:', e)
     }
     setLoading(false)
   }
@@ -105,9 +112,16 @@ export default function Home() {
     router.push('/login')
   }
 
-  if (!session || loading) return (
+  if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
       <span style={{ color: '#6b6b66', fontSize: 14 }}>Loading...</span>
+    </div>
+  )
+
+  if (!profile) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', gap: 12 }}>
+      <span style={{ color: '#991b1b', fontSize: 14 }}>Could not load profile. Please sign out and try again.</span>
+      <button className="btn" onClick={handleLogout}>Sign out</button>
     </div>
   )
 
@@ -315,22 +329,6 @@ function CFIDashboardTab({ profile, students, onEdit }) {
           </div>
         )
       })}
-
-      {ready > 0 && (
-        <>
-          <div className="section-title" style={{ margin: '8px 0 12px' }}>Ready for checkride</div>
-          {students.filter(s => s.stage === 5).map((s, i) => (
-            <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={() => onEdit(s)}>
-              <div className="avatar" style={AV_COLORS[i % 5]}>{initials(s.full_name)}</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 500, fontSize: 14 }}>{s.full_name}</div>
-                <TrainingBadge type={s.training_type || 'Private Pilot'} />
-              </div>
-              <StageBadge stage={5} />
-            </div>
-          ))}
-        </>
-      )}
 
       {total === 0 && (
         <div className="empty">No students yet — go to My students to add your first one.</div>
