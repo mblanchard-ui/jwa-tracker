@@ -84,25 +84,10 @@ export default function Home() {
     loadData()
   }, [session])
 
- async function loadData() {
+  async function loadData() {
     setLoading(true)
-    try {
-      const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
-      setProfile(prof)
-      if (prof?.role === 'chief') {
-        const { data: allCFIs } = await supabase.from('profiles').select('*').eq('role', 'cfi').order('full_name')
-        setCfis(allCFIs || [])
-        const { data: allStudents } = await supabase.from('students').select('*').order('full_name')
-        setStudents(allStudents || [])
-      } else {
-        const { data: myStudents } = await supabase.from('students').select('*').eq('cfi_id', session.user.id).order('full_name')
-        setStudents(myStudents || [])
-      }
-    } catch(e) {
-      console.error(e)
-    }
-    setLoading(false)
-  }
+    const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
+    setProfile(prof)
     if (prof?.role === 'chief') {
       const { data: allCFIs } = await supabase.from('profiles').select('*').eq('role', 'cfi').order('full_name')
       setCfis(allCFIs || [])
