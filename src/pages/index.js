@@ -54,7 +54,6 @@ function TrainingBadge({ type }) {
 
 export default function Home() {
   const router = useRouter()
-  const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
   const [tab, setTab] = useState('dashboard')
   const [cfis, setCfis] = useState([])
@@ -68,36 +67,37 @@ export default function Home() {
   const [searchQ, setSearchQ] = useState('')
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) { router.push('/login'); return }
-      setSession(session)
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) {
+        router.push('/login')
+        return
+      }
+      await loadData(session)
+      setLoading(false)
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) router.push('/login')
-      else setSession(session)
-    })
-    return () => subscription.unsubscribe()
-  }, [router])
+  }, [])
 
-  useEffect(() => {
-    if (!session) return
-    loadData()
-  }, [session])
-
-  async function loadData() {
-    setLoading(true)
-    const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
-    setProfile(prof)
-    if (prof?.role === 'chief') {
-      const { data: allCFIs } = await supabase.from('profiles').select('*').eq('role', 'cfi').order('full_name')
-      setCfis(allCFIs || [])
-      const { data: allStudents } = await supabase.from('students').select('*').order('full_name')
-      setStudents(allStudents || [])
-    } else {
-      const { data: myStudents } = await supabase.from('students').select('*').eq('cfi_id', session.user.id).order('full_name')
-      setStudents(myStudents || [])
+  async function loadData(session) {
+    try {
+      const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
+      setProfile(prof)
+      if (prof?.role === 'chief') {
+        const { data: allCFIs } = await supabase.from('profiles').select('*').eq('role', 'cfi').order('full_name')
+        setCfis(allCFIs || [])
+        const { data: allStudents } = await supabase.from('students').select('*').order('full_name')
+        setStudents(allStudents || [])
+      } else {
+        const { data: myStudents } = await supabase.from('students').select('*').eq('cfi_id', session.user.id).order('full_name')
+        setStudents(myStudents || [])
+      }
+    } catch(e) {
+      console.error('loadData error:', e)
     }
-    setLoading(false)
+  }
+
+  async function reload() {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session) await loadData(session)
   }
 
   async function handleLogout() {
@@ -105,9 +105,16 @@ export default function Home() {
     router.push('/login')
   }
 
-  if (!session || loading) return (
+  if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
       <span style={{ color: '#6b6b66', fontSize: 14 }}>Loading...</span>
+    </div>
+  )
+
+  if (!profile) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', gap: 12 }}>
+      <span style={{ color: '#991b1b', fontSize: 14 }}>Could not load profile. Please sign out and try again.</span>
+      <button className="btn" onClick={handleLogout}>Sign out</button>
     </div>
   )
 
@@ -131,7 +138,7 @@ export default function Home() {
       </nav>
 
       <div className="tabs">
-        {isChief && <button className={`tab-btn ${tab === 'dashboard' ? 'active' : ''}`} onClick={() => setTab('dashboard')}>Dashboard</button>}
+        <button className={`tab-btn ${tab === 'dashboard' ? 'active' : ''}`} onClick={() => setTab('dashboard')}>Dashboard</button>
         {isChief && <button className={`tab-btn ${tab === 'cfis' ? 'active' : ''}`} onClick={() => setTab('cfis')}>Instructors</button>}
         <button className={`tab-btn ${tab === 'students' ? 'active' : ''}`} onClick={() => setTab('students')}>
           {isChief ? 'All students' : 'My students'}
@@ -139,8 +146,9 @@ export default function Home() {
       </div>
 
       <div className="container page">
-        {tab === 'dashboard' && isChief && <DashboardTab cfis={cfis} students={students} />}
-        {tab === 'cfis' && isChief && <CFIsTab cfis={cfis} students={students} onAddCFI={() => setAddCFIOpen(true)} onEditStudent={setEditStudent} onRefresh={loadData} />}
+        {tab === 'dashboard' && isChief && <ChiefDashboardTab cfis={cfis} students={students} />}
+        {tab === 'dashboard' && !isChief && <CFIDashboardTab profile={profile} students={students} onEdit={setEditStudent} />}
+        {tab === 'cfis' && isChief && <CFIsTab cfis={cfis} students={students} onAddCFI={() => setAddCFIOpen(true)} onEditStudent={setEditStudent} onRefresh={reload} />}
         {tab === 'students' && (
           <StudentsTab
             students={filteredStudents}
@@ -169,7 +177,7 @@ export default function Home() {
           onSave={async (data) => {
             await supabase.from('students').insert(data)
             setAddStudentOpen(false)
-            loadData()
+            reload()
           }}
         />
       )}
@@ -185,12 +193,12 @@ export default function Home() {
           onSave={async (id, data) => {
             await supabase.from('students').update(data).eq('id', id)
             setEditStudent(null)
-            loadData()
+            reload()
           }}
           onDelete={async (id) => {
             await supabase.from('students').delete().eq('id', id)
             setEditStudent(null)
-            loadData()
+            reload()
           }}
         />
       )}
@@ -198,7 +206,7 @@ export default function Home() {
   )
 }
 
-function DashboardTab({ cfis, students }) {
+function ChiefDashboardTab({ cfis, students }) {
   const total = students.length
   const ready = students.filter(s => s.stage === 5).length
   const prep = students.filter(s => s.stage === 4).length
@@ -256,6 +264,67 @@ function DashboardTab({ cfis, students }) {
             </div>
           ))}
         </>
+      )}
+    </div>
+  )
+}
+
+function CFIDashboardTab({ profile, students, onEdit }) {
+  const total = students.length
+  const ready = students.filter(s => s.stage === 5).length
+  const prep = students.filter(s => s.stage === 4).length
+  const presolo = students.filter(s => s.stage === 0).length
+
+  return (
+    <div>
+      <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 14, color: '#001f3f' }}>
+        Welcome, {profile?.full_name}
+      </div>
+
+      <div className="stat-grid">
+        <div className="stat-card"><div className="stat-num">{total}</div><div className="stat-lbl">My students</div></div>
+        <div className="stat-card"><div className="stat-num">{ready}</div><div className="stat-lbl">Checkride ready</div></div>
+        <div className="stat-card"><div className="stat-num">{prep}</div><div className="stat-lbl">Checkride prep</div></div>
+        <div className="stat-card"><div className="stat-num">{presolo}</div><div className="stat-lbl">Presolo</div></div>
+      </div>
+
+      <div className="section-title" style={{ marginBottom: 12 }}>My students by stage</div>
+      {STAGES.map((s, i) => {
+        const stageStudents = students.filter(x => x.stage === i)
+        const pct = total ? Math.round(stageStudents.length / total * 100) : 0
+        return (
+          <div key={i} style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <StageBadge stage={i} />
+              <span style={{ fontSize: 12, color: '#6b6b66' }}>{stageStudents.length} student{stageStudents.length !== 1 ? 's' : ''}</span>
+            </div>
+            <div className="progress-wrap"><div className="progress-bar" style={{ width: pct + '%' }} /></div>
+            {stageStudents.length > 0 && (
+              <div style={{ marginTop: 6, paddingLeft: 4 }}>
+                {stageStudents.map((st, si) => (
+                  <div
+                    key={st.id}
+                    onClick={() => onEdit(st)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 7, cursor: 'pointer', marginBottom: 2 }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f4f4f0'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <div className="avatar" style={{ ...AV_COLORS[si % 5], width: 28, height: 28, fontSize: 10 }}>{initials(st.full_name)}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>{st.full_name}</div>
+                      {st.notes && <div style={{ fontSize: 11, color: '#6b6b66', fontStyle: 'italic' }}>{st.notes}</div>}
+                    </div>
+                    <TrainingBadge type={st.training_type || 'Private Pilot'} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+
+      {total === 0 && (
+        <div className="empty">No students yet — go to My students to add your first one.</div>
       )}
     </div>
   )
